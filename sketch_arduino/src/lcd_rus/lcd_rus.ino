@@ -4,7 +4,7 @@
 // для подключения контакты на Arduino в порядке:
 // RS, E, DB4, DB5, DB6, DB7
 
-LiquidCrystalRus lcd(13, 12, A2, A3, A4, A5); 
+LiquidCrystalRus lcd(12, 13, A2, A3, A4, A5); 
 
 int counter; // простая переменная для счётчика
 
