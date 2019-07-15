@@ -78,9 +78,14 @@ void loop(){
     float sensor_line_right = analogRead(SENSOR_LINE_RIGHT);
     float angular = pidLine(sensor_line_right, sensor_line_left);
     
+    float V = linear;                      //линейная скорость
+    float W = angular;                     //угловая скорость
+    float r = WHEEL_DIAMETER/2;            //радиус колеса
+    float d = WHEEL_BASE;                  //база робота
+  
     // вычисление требуемой скорости вращения колес
-    speed_wheel[LEFT] = noRear(linear - WHEEL_BASE * angular);
-    speed_wheel[RIGHT]  = noRear(linear + WHEEL_BASE * angular);
+    float speed_left = r * ((1 / r) * V - (d / r) * W);
+    float speed_right = r * ((1 / r) * V + (d / r) * W);
 
     //вычисление текущей скорости вращения колес
     float speed_actual_left = impulse2meters(enc_count[LEFT]) / ((float)t / 1000.0);

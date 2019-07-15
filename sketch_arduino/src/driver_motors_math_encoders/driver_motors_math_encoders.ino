@@ -59,9 +59,14 @@ void loop(){
     switchMode();
     go(mode);
   
+    float V = linear;                      //линейная скорость
+    float W = angular;                     //угловая скорость
+    float r = WHEEL_DIAMETER/2;            //радиус колеса
+    float d = WHEEL_BASE;                  //база робота
+  
     // вычисление требуемой скорости вращения колес
-    speed_wheel[LEFT] = (linear - WHEEL_BASE * angular);
-    speed_wheel[RIGHT]  = (linear + WHEEL_BASE * angular);
+    float speed_left = r * ((1 / r) * V - (d / r) * W);
+    float speed_right = r * ((1 / r) * V + (d / r) * W);
 
     moveMotor(getMotorValue(speed_wheel[LEFT]), LEFT);
     moveMotor(getMotorValue(speed_wheel[RIGHT]), RIGHT);

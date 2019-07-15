@@ -80,9 +80,14 @@ void loop(){
   // проверяем нужно ли менять режим
   if (t > TIME_PUB_PERIOD_MS) {
 
+    float V = linear;                      //линейная скорость
+    float W = angular;                     //угловая скорость
+    float r = WHEEL_DIAMETER/2;            //радиус колеса
+    float d = WHEEL_BASE;                  //база робота
+  
     // вычисление требуемой скорости вращения колес
-    speed_wheel[LEFT] = (linear - WHEEL_BASE * angular);
-    speed_wheel[RIGHT]  = (linear + WHEEL_BASE * angular);
+    float speed_left = r * ((1 / r) * V - (d / r) * W);
+    float speed_right = r * ((1 / r) * V + (d / r) * W);
 
     //вычисление текущей скорости вращения колес
     float speed_actual_left = impulse2meters(enc_count[LEFT]) / ((float)t / 1000.0);
@@ -138,7 +143,7 @@ int linear2driverMotor(float linear_speed, float speed_actual, int side)
   }
 
   //Расчет средней скорости движения между публикациями
-  float e = -(speed_actual - (linear_speed / K_SPEED)_;          //разница в скорости текущая в m/s и желаемая m/s
+  float e = -(speed_actual - (linear_speed / K_SPEED));          //разница в скорости текущая в m/s и желаемая m/s
 
   //ПИД регулятор для рассчета значения для драйвера моторов
   float P = Kp * e;

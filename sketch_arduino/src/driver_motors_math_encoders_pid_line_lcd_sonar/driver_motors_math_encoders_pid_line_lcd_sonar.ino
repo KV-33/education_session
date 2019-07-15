@@ -1,5 +1,10 @@
 // Скетч для управления моторами используя драйвер (ПИД-регулятор) для езды по линии
 #include <LiquidCrystalRus.h> //инициализация библиотеки 
+#include <Ultrasonic.h>
+#include <SimpleKalmanFilter.h>
+
+#define SONAR_TRIG_PIN        7
+#define SONAR_ECHO_PIN        8
 
 // выводы к которым подключен драйвер моторов
 #define LEFT_MOTOR_PIN_1          5
@@ -55,7 +60,9 @@ int i_count = 0;
 
 float e_prev_line = 0.0;
 
-LiquidCrystalRus lcd(12, 13, A2, A3, A4, A5); 
+LiquidCrystalRus lcd(12, 13, A2, A3, A4, A5);
+Ultrasonic sonar(SONAR_TRIG_PIN, SONAR_ECHO_PIN);
+SimpleKalmanFilter kf(1, 1, 0.05);
 
 void setup() {
   // инициализация выходов на драйверы управления моторами
@@ -73,7 +80,10 @@ void setup() {
   Serial.begin(115200);
 }
 
-void loop(){
+void loop() {
+  float range = sonar.read() / 100.0;
+  float range_kf = kf.updateEstimate(range);
+
   unsigned long t = millis() - last_time_pub;
 
   // проверяем нужно ли публиковать
@@ -82,12 +92,12 @@ void loop(){
     float sensor_line_left = analogRead(SENSOR_LINE_LEFT);
     float sensor_line_right = analogRead(SENSOR_LINE_RIGHT);
     float angular = pidLine(sensor_line_right, sensor_line_left);
-    
+
     float V = linear;                      //линейная скорость
     float W = angular;                     //угловая скорость
-    float r = WHEEL_DIAMETER/2;            //радиус колеса
+    float r = WHEEL_DIAMETER / 2;          //радиус колеса
     float d = WHEEL_BASE;                  //база робота
-  
+
     // вычисление требуемой скорости вращения колес
     float speed_left = r * ((1 / r) * V - (d / r) * W);
     float speed_right = r * ((1 / r) * V + (d / r) * W);
@@ -102,65 +112,36 @@ void loop(){
 
     moveMotor(pid_left, LEFT);
     moveMotor(pid_right, RIGHT);
-    
-    Serial.print("L_count: ");
-    Serial.print(enc_count[LEFT]);
-    Serial.print(", R_count: ");
-    Serial.println(enc_count[RIGHT]);
 
-    Serial.print("L_meters: ");
-    Serial.print(impulse2meters(enc_count[LEFT]));
-    Serial.print(", R_meters: ");
-    Serial.println(impulse2meters(enc_count[RIGHT]));
-
-    Serial.print("L_speed: ");
-    Serial.print(speed_wheel[LEFT]);
-    Serial.print(", R_speed: ");
-    Serial.println(speed_wheel[RIGHT]);
-
-    Serial.print("L_speed_actual: ");
-    Serial.print(speed_actual_left);
-    Serial.print(", R_speed_actual: ");
-    Serial.println(speed_actual_right);
-
-    Serial.print("L_pid_value: ");
-    Serial.print(pid_left);
-    Serial.print(", R_pid_value: ");
-    Serial.println(pid_right);
-
-    Serial.println("--------------------------------");
-
-    showMsgLCD();
+    lcd.print("ANG:"); //выводим текст
+    lcd.print(angular); //выводим текст
+    lcd.setCursor(0, 1); //переводим курсор на 0 столбец 1 строку
+    lcd.print("SNR:"); //выводим текст
+    lcd.print(range_kf); //выводим текст
+    lcd.setCursor(0, 0); //переводим курсор на 0 столбец 1 строку
 
     enc_count[LEFT] = 0.0;
     enc_count[RIGHT] = 0.0;
-    
+
     last_time_pub = millis(); // фиксируем время последней публикации
   }
-}
-
-void showMsgLCD(){
-  lcd.print("Привет, мир!"); //выводим текст 
-  lcd.setCursor(0, 1); //переводим курсор на 0 столбец 1 строку
-  lcd.print("Я ТЕЛЕГА..."); //выводим текст    
-  lcd.setCursor(0, 0); //переводим курсор на 0 столбец 1 строку
 }
 
 float pidLine(int sensor_line_1, int sensor_line_2)
 {
   //Расчет средней скорости движения между публикациями
   float e = sensor_line_2 - sensor_line_1;          //угол отклонения
-  
-  if(e == 0.0){
+
+  if (e == 0.0) {
     e_prev_line = 0.0;
     return 0.0;
   }
-  
+
   //ПИД регулятор для расчета значения для драйвера моторов
   float P = Kp_LINE * e;
   float D = Kd_LINE * (e - e_prev_line);
   float value = P + D;
-  
+
   e_prev_line = e;                           //фиксируем последнее значение угла угла отклонения
 
   return value;
@@ -211,34 +192,34 @@ int linear2driverMotor(float linear_speed, float speed_actual, int side)
 }
 
 // управление мотором на определенной стороне робота
-void moveMotor(int value, int side){
+void moveMotor(int value, int side) {
   // избавляемся от переполнения ШИМ
-  if (value>255)
+  if (value > 255)
     value = 255;
-  if (value<-255)
+  if (value < -255)
     value = -255;
 
   // определяем направление вращения и передаем значения на драйвер
-  if (value>=0) {
-    if (value==0){
+  if (value >= 0) {
+    if (value == 0) {
       // стоп мотор
-      analogWrite(side==LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, 0);
-      analogWrite(side==LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, 0);
+      analogWrite(side == LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, 0);
+      analogWrite(side == LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, 0);
     } else {
       // вращение вперед
-      analogWrite(side==LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, abs(value));
-      analogWrite(side==LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, 0);
+      analogWrite(side == LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, abs(value));
+      analogWrite(side == LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, 0);
     }
   } else {
     // вращение назад
-    analogWrite(side==LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, 0);
-    analogWrite(side==LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, abs(value));
+    analogWrite(side == LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, 0);
+    analogWrite(side == LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, abs(value));
   }
 }
 
-float getRotationDir(float value){
-  if (value>=0) {
-    if (value==0){
+float getRotationDir(float value) {
+  if (value >= 0) {
+    if (value == 0) {
       return 0.0;
     }
     else
@@ -278,9 +259,9 @@ float sumIprev(int side) {
 
 float noRear(float value)
 {
-  if(value < 0)
+  if (value < 0)
   {
     return 0.0;
   }
-  return abs(value/2);
+  return abs(value / 2);
 }

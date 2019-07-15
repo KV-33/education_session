@@ -12,6 +12,7 @@
 #define ROBOT_ANGULAR             0.0      // угловая скорость робота
 
 #define WHEEL_BASE                0.184     // база колесная в метрах
+#define WHEEL_DIAMETER            0.084     // диаметр колеса в метрах
 
 // стороны робота
 #define LEFT                      0
@@ -44,13 +45,23 @@ void loop(){
     // демонстрационное вращение моторами с заданной скоростью и сменой направления по таймеру
     switchMode();
     go(mode);
+
+    float V = linear;                      //линейная скорость
+    float W = angular;                     //угловая скорость
+    float r = WHEEL_DIAMETER/2;            //радиус колеса
+    float d = WHEEL_BASE;                  //база робота
   
     // вычисление требуемой скорости вращения колес
-    float speed_left = (linear - WHEEL_BASE * angular);
-    float speed_right = (linear + WHEEL_BASE * angular);
+    float speed_left = r * ((1 / r) * V - (d / r) * W);
+    float speed_right = r * ((1 / r) * V + (d / r) * W);
 
     moveMotor(getMotorValue(speed_left), LEFT);
     moveMotor(getMotorValue(speed_right), RIGHT);
+
+    Serial.print("L_speed: ");
+    Serial.print(speed_left);
+    Serial.print(", R_speed: ");
+    Serial.println(speed_right);
 }
 
 // управление мотором на определенной стороне робота
