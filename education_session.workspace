@@ -6,5 +6,6 @@
         <Directory>src</Directory>
         <Directory>sketch_arduino</Directory>
         <Directory>documentation</Directory>
+        <Directory>design</Directory>
     </WatchDirectories>
 </Workspace>
