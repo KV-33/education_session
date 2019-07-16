@@ -61,12 +61,12 @@ void loop(){
   
     float V = linear;                      //линейная скорость
     float W = angular;                     //угловая скорость
-    float r = WHEEL_DIAMETER/2;            //радиус колеса
+    float r = WHEEL_DIAMETER/2.0;            //радиус колеса
     float d = WHEEL_BASE;                  //база робота
   
     // вычисление требуемой скорости вращения колес
-    float speed_left = r * ((1 / r) * V - (d / r) * W);
-    float speed_right = r * ((1 / r) * V + (d / r) * W);
+    speed_wheel[LEFT] = r * ((1.0 / r) * V - (d / r) * W);
+    speed_wheel[RIGHT] = r * ((1.0 / r) * V + (d / r) * W);
 
     moveMotor(getMotorValue(speed_wheel[LEFT]), LEFT);
     moveMotor(getMotorValue(speed_wheel[RIGHT]), RIGHT);

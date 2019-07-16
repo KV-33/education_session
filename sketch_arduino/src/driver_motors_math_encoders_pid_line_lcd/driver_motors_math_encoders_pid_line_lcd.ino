@@ -28,7 +28,7 @@
 #define MOTOR_VALUE_MAX           255      // максимальное значение подаваемое на драйвер
 #define MOTOR_VALUE_MIN           80       // минимальное значение подаваемое на драйвер
 
-#define ROBOT_LINEAR              0.3      // линейная скорость робота
+#define ROBOT_LINEAR              1.0      // линейная скорость робота
 #define ROBOT_ANGULAR             0.0      // угловая скорость робота
 
 #define WHEEL_BASE                0.184     // база колесная в метрах
@@ -85,13 +85,13 @@ void loop(){
     
     float V = linear;                      //линейная скорость
     float W = angular;                     //угловая скорость
-    float r = WHEEL_DIAMETER/2;            //радиус колеса
+    float r = WHEEL_DIAMETER/2.0;            //радиус колеса
     float d = WHEEL_BASE;                  //база робота
   
     // вычисление требуемой скорости вращения колес
-    float speed_left = r * ((1 / r) * V - (d / r) * W);
-    float speed_right = r * ((1 / r) * V + (d / r) * W);
-
+    speed_wheel[LEFT] = r * ((1.0 / r) * V - (d / r) * W);
+    speed_wheel[RIGHT] = r * ((1.0 / r) * V + (d / r) * W);
+    
     //вычисление текущей скорости вращения колес
     float speed_actual_left = impulse2meters(enc_count[LEFT]) / ((float)t / 1000.0);
     float speed_actual_right = impulse2meters(enc_count[RIGHT]) / ((float)t / 1000.0);
