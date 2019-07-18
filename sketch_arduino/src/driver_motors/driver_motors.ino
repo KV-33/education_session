@@ -10,6 +10,9 @@
 
 #define MOTOR_VALUE               100   // значение подаваемое на драйвер
 
+#define MOTOR_VALUE_MAX           255      // максимальное значение подаваемое на драйвер
+#define MOTOR_VALUE_MIN           50       // минимальное значение подаваемое на драйвер
+
 // стороны робота
 #define LEFT                      0
 #define RIGHT                     1
@@ -43,10 +46,16 @@ void loop(){
 // управление мотором на определенной стороне робота
 void moveMotor(int value, int side){
   // избавляемся от переполнения ШИМ
-  if (value>255)
-    value = 255;
-  if (value<-255)
-    value = -255;
+  if (value>MOTOR_VALUE_MAX)
+    value = MOTOR_VALUE_MAX;
+  if (value<-MOTOR_VALUE_MAX)
+    value = -MOTOR_VALUE_MAX;
+
+  // убираем значения ниже минимального значения при котором моторы могут вращаться
+  if (value < 0 && value >= -MOTOR_VALUE_MIN)
+    value = -MOTOR_VALUE_MIN;
+  if (value > 0 && value <= MOTOR_VALUE_MIN)
+    value = MOTOR_VALUE_MIN;
 
   // определяем направление вращения и передаем значения на драйвер
   if (value>=0) {

@@ -25,7 +25,7 @@ void loop(){
 
     float sensor_line_left = analogRead(SENSOR_LINE_LEFT);
     float sensor_line_right = analogRead(SENSOR_LINE_RIGHT);
-    float angular = pidLine(sensor_line_left, sensor_line_right);
+    float angular = linePID(sensor_line_left, sensor_line_right);
     
     Serial.print("angular: ");
     Serial.print(angular);
@@ -39,7 +39,7 @@ void loop(){
   }
 }
 
-float pidLine(int sensor_line_1, int sensor_line_2)
+float linePID(int sensor_line_1, int sensor_line_2)
 {
   //Расчет средней скорости движения между публикациями
   float e = sensor_line_2 - sensor_line_1;          //угол отклонения

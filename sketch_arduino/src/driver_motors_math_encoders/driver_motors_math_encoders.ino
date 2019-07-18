@@ -18,6 +18,9 @@
 #define WHEEL_DIAMETER            0.084     // диаметр колеса в метрах
 #define WHEEL_IMPULSE_COUNT       1225.0    // количество импульсов на оборот колеса
 
+#define MOTOR_VALUE_MAX           255      // максимальное значение подаваемое на драйвер
+#define MOTOR_VALUE_MIN           50       // минимальное значение подаваемое на драйвер
+
 #define COUNT_MOTORS              2         // количество моторов
 
 // стороны робота
@@ -37,8 +40,8 @@ int mode = STOP;         // режим управления
 float linear = ROBOT_LINEAR;
 float angular = ROBOT_ANGULAR;
 
-float enc_count[COUNT_MOTORS] = {0.0, 0.0};      // счетчик для левого колеса
-float speed_wheel[COUNT_MOTORS] = {0.0, 0.0};    // скорость моторов
+volatile float enc_count[COUNT_MOTORS] = {0.0, 0.0};      // счетчик для левого колеса
+volatile float speed_wheel[COUNT_MOTORS] = {0.0, 0.0};    // скорость моторов
 
 void setup() {
   // инициализация выходов на драйверы управления моторами
@@ -61,13 +64,14 @@ void loop(){
   
     float V = linear;                      //линейная скорость
     float W = angular;                     //угловая скорость
-    float r = WHEEL_DIAMETER/2.0;            //радиус колеса
-    float d = WHEEL_BASE;                  //база робота
+    float r = WHEEL_DIAMETER/2.0;          //радиус колеса
+    float L = WHEEL_BASE;                  //база робота
   
-    // вычисление требуемой скорости вращения колес
-    speed_wheel[LEFT] = r * ((1.0 / r) * V - (d / r) * W);
-    speed_wheel[RIGHT] = r * ((1.0 / r) * V + (d / r) * W);
+    // вычисление требуемой скорости вращения колес (рад/с)
+    speed_wheel[LEFT] = (1.0 / r) * V - (L / r) * W;
+    speed_wheel[RIGHT] = (1.0 / r) * V + (L / r) * W;
 
+    // передаем значения драйверам двигателей (преобразуя значения скорости к значениям ШИМ)
     moveMotor(getMotorValue(speed_wheel[LEFT]), LEFT);
     moveMotor(getMotorValue(speed_wheel[RIGHT]), RIGHT);
     
@@ -75,6 +79,11 @@ void loop(){
     Serial.print(enc_count[LEFT]);
     Serial.print(", R_count: ");
     Serial.println(enc_count[RIGHT]);
+
+    Serial.print("L_rad: ");
+    Serial.print(impulse2rad(enc_count[LEFT]));
+    Serial.print(", R_rad: ");
+    Serial.println(impulse2rad(enc_count[RIGHT]));
 
     Serial.print("L_meters: ");
     Serial.print(impulse2meters(enc_count[LEFT]));
@@ -87,10 +96,16 @@ void loop(){
 // управление мотором на определенной стороне робота
 void moveMotor(int value, int side){
   // избавляемся от переполнения ШИМ
-  if (value>255)
-    value = 255;
-  if (value<-255)
-    value = -255;
+  if (value>MOTOR_VALUE_MAX)
+    value = MOTOR_VALUE_MAX;
+  if (value<-MOTOR_VALUE_MAX)
+    value = -MOTOR_VALUE_MAX;
+
+  // убираем значения ниже минимального значения при котором моторы могут вращаться
+  if (value < 0 && value >= -MOTOR_VALUE_MIN)
+    value = -MOTOR_VALUE_MIN;
+  if (value > 0 && value <= MOTOR_VALUE_MIN)
+    value = MOTOR_VALUE_MIN;
 
   // определяем направление вращения и передаем значения на драйвер
   if (value>=0) {
@@ -110,6 +125,7 @@ void moveMotor(int value, int side){
   }
 }
 
+// получаем направление вращения двигателя относительно значения скорости вращения
 float getRotationDir(float value){
   if (value>=0) {
     if (value==0){
@@ -141,6 +157,11 @@ inline float impulse2meters(float x) {
   return (x / WHEEL_IMPULSE_COUNT) * M_PI * WHEEL_DIAMETER;
 }
 
+// преобразование импульсов в радианы
+inline float impulse2rad(float x) {
+  return (x / WHEEL_IMPULSE_COUNT) * 2.0 * M_PI;
+}
+
 // изменение режима управления по заданному интервалу
 void switchMode(){
   // вычисление интервала времени от последней публикации
@@ -169,11 +190,11 @@ void go(int mode){
     linear = -ROBOT_LINEAR;
     break;
   case ROTATE_LEFT:
-    angular = 3.0;
+    angular = M_PI;
     linear = 0.0;
     break;
   case ROTATE_RIGHT:
-    angular = -3.0;
+    angular = -M_PI;
     linear = 0.0;
     break;
   case STOP:
@@ -183,6 +204,7 @@ void go(int mode){
   }
 }
 
+// функция преобразования значения скорости в значение ШИМ сигнала
 int getMotorValue(float value){
-  return map(value*1000, -1000, 1000, -255, 255);
+  return map(value*100, -(2 * M_PI * 100), (2 * M_PI * 100), -255, 255);
 }

@@ -21,11 +21,9 @@
 
 #define TIME_PUB_PERIOD_MS          5  // интервал публикации значений
 
-#define Kp                        630.0    // пропорциональный коэффициент для ПИД регулятора (41.7)
-#define Ki                        0.2      // интегральный коэффициент для ПИД регулятора
-#define Kd                        0.3      // дифференциальный коэффициент для ПИД регулятора
-#define I_SIZE                    1      // длинна выборки последних интегральных состовляющих   
-#define K_SPEED                   0.42    // коэффициент поправки неадекватной скорости 
+#define Kp                        120.0    // пропорциональный коэффициент для ПИД регулятора (41.7)
+#define Ki                        0.1      // интегральный коэффициент для ПИД регулятора
+#define Kd                        0.2      // дифференциальный коэффициент для ПИД регулятора
 
 #define Kp_LINE                   0.003    // пропорциональный коэффициент для ПИД регулятора линии
 #define Kd_LINE                   0.0005    // дифференциальный коэффициент для ПИД р-егулятора линии
@@ -52,11 +50,11 @@ float linear = ROBOT_LINEAR;
 float angular = ROBOT_ANGULAR;
 
 float enc_count[COUNT_MOTORS] = {0.0, 0.0};      // счетчик для левого колеса
-float speed_wheel[COUNT_MOTORS] = {0.0, 0.0};    // скорость моторов
+float speed_wheel[COUNT_MOTORS] = {0.0, 0.0};    // скорость моторов требуемая
+float speed_actual[COUNT_MOTORS] = {0.0, 0.0};   // скорость моторов реальная
 
 float e_prev[COUNT_MOTORS] = {0.0, 0.0};          //последнее значение разницы скорости движения
-float I_prev[COUNT_MOTORS][I_SIZE];               //последние значения выборки интегральной составляющей ПИД регулятора
-int i_count = 0;
+float I_prev[COUNT_MOTORS] = {0.0, 0.0};          //последние значения выборки интегральной составляющей ПИД регулятора
 
 float e_prev_line = 0.0;
 
@@ -91,24 +89,24 @@ void loop() {
 
     float sensor_line_left = analogRead(SENSOR_LINE_LEFT);
     float sensor_line_right = analogRead(SENSOR_LINE_RIGHT);
-    float angular = pidLine(sensor_line_right, sensor_line_left);
-
+    float angular = linePID(sensor_line_right, sensor_line_left);
+    
     float V = linear;                      //линейная скорость
     float W = angular;                     //угловая скорость
-    float r = WHEEL_DIAMETER / 2.0;          //радиус колеса
+    float r = WHEEL_DIAMETER/2.0;          //радиус колеса
     float d = WHEEL_BASE;                  //база робота
-    
+  
     // вычисление требуемой скорости вращения колес
-    speed_wheel[LEFT] = r * ((1.0 / r) * V - (d / r) * W);
-    speed_wheel[RIGHT] = r * ((1.0 / r) * V + (d / r) * W);
-
+    speed_wheel[LEFT] = (1.0 / r) * V - (d / r) * W;
+    speed_wheel[RIGHT] = (1.0 / r) * V + (d / r) * W;
+    
     //вычисление текущей скорости вращения колес
-    float speed_actual_left = impulse2meters(enc_count[LEFT]) / ((float)t / 1000.0);
-    float speed_actual_right = impulse2meters(enc_count[RIGHT]) / ((float)t / 1000.0);
+    speed_actual[LEFT] = impulse2rad(enc_count[LEFT]) / ((float)t / 1000.0);
+    speed_actual[RIGHT] = impulse2rad(enc_count[RIGHT]) / ((float)t / 1000.0);
 
     //вычисление значения для драйвера используя ПИД-регулятор
-    float pid_left = linear2driverMotor(speed_wheel[LEFT], speed_actual_left, LEFT);
-    float pid_right = linear2driverMotor(speed_wheel[RIGHT], speed_actual_right, RIGHT);
+    float pid_left = motorsPID(speed_wheel[LEFT], speed_actual[LEFT], LEFT);
+    float pid_right = motorsPID(speed_wheel[RIGHT], speed_actual[RIGHT], RIGHT);
 
     moveMotor(pid_left, LEFT);
     moveMotor(pid_right, RIGHT);
@@ -127,99 +125,86 @@ void loop() {
   }
 }
 
-float pidLine(int sensor_line_1, int sensor_line_2)
+float linePID(int sensor_line_1, int sensor_line_2)
 {
   //Расчет средней скорости движения между публикациями
   float e = sensor_line_2 - sensor_line_1;          //угол отклонения
-
-  if (e == 0.0) {
+  
+  if(e == 0.0){
     e_prev_line = 0.0;
     return 0.0;
   }
-
+  
   //ПИД регулятор для расчета значения для драйвера моторов
   float P = Kp_LINE * e;
   float D = Kd_LINE * (e - e_prev_line);
   float value = P + D;
-
+  
   e_prev_line = e;                           //фиксируем последнее значение угла угла отклонения
 
   return value;
 }
 
-int linear2driverMotor(float linear_speed, float speed_actual, int side)
+// ПИД-регулятор
+int motorsPID(float speed_control, float speed_actual, int side)
 {
-  if (linear_speed == 0) {
-    I_prev[i_count][side] = 0.0;
+  // при управляющем воздействии равным нулю фиксируем составляющие на текущем шаге и возвращаем управляющее возжействие равным нулю
+  if (speed_control == 0.0) {
+    I_prev[side] = 0.0;
     e_prev[side] = 0.0;
     return 0;
   }
 
-  //Расчет средней скорости движения между публикациями
-  float e = -(speed_actual - (linear_speed / K_SPEED));          //разница в скорости текущая в m/s и желаемая m/s
+  // расчет ошибки между требуемой скоростью и фактической
+  float e = speed_control - speed_actual;          //разница в скорости текущая в m/s и желаемая m/s
 
-  //ПИД регулятор для рассчета значения для драйвера моторов
+  // ПИД регулятор для рассчета значения для драйвера моторов
   float P = Kp * e;
-  float I = sumIprev(side) * Ki;
+  float I = I_prev[side] + Ki * e;
   float D = Kd * (e - e_prev[side]);
-  float motor_value = round(P + I + D);
+  float value = round(P + I + D);
 
-  if (i_count == I_SIZE) {
-    i_count = 0;
-  }
+  I_prev[side] = I;            //фиксируем интегральную составляющую
+  e_prev[side] = e;            //фиксируем последнее значение разницы в скорости
 
-  I_prev[i_count][side] = I;                  //фиксируем интегральную составляющую
-  e_prev[side] = e;                     //фиксируем последнее значение разницы в скорости
-  i_count++;
-
-  if (motor_value < 0 && motor_value >= -MOTOR_VALUE_MIN) {
-    motor_value = -MOTOR_VALUE_MIN;
-  }
-  if (motor_value > 0 && motor_value <= MOTOR_VALUE_MIN) {
-    motor_value = MOTOR_VALUE_MIN;
-  }
-
-  //Убираем переполнение ШИМ
-  if (motor_value > MOTOR_VALUE_MAX) {
-    return MOTOR_VALUE_MAX;
-  }
-
-  if (motor_value < -MOTOR_VALUE_MAX) {
-    return -MOTOR_VALUE_MAX;
-  }
-
-  return motor_value;
+  return value;
 }
 
 // управление мотором на определенной стороне робота
-void moveMotor(int value, int side) {
+void moveMotor(int value, int side){
   // избавляемся от переполнения ШИМ
-  if (value > 255)
-    value = 255;
-  if (value < -255)
-    value = -255;
+  if (value>MOTOR_VALUE_MAX)
+    value = MOTOR_VALUE_MAX;
+  if (value<-MOTOR_VALUE_MAX)
+    value = -MOTOR_VALUE_MAX;
+
+  // убираем значения ниже минимального значения при котором моторы могут вращаться
+  if (value < 0 && value >= -MOTOR_VALUE_MIN)
+    value = -MOTOR_VALUE_MIN;
+  if (value > 0 && value <= MOTOR_VALUE_MIN)
+    value = MOTOR_VALUE_MIN;
 
   // определяем направление вращения и передаем значения на драйвер
-  if (value >= 0) {
-    if (value == 0) {
+  if (value>=0) {
+    if (value==0){
       // стоп мотор
-      analogWrite(side == LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, 0);
-      analogWrite(side == LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, 0);
+      analogWrite(side==LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, 0);
+      analogWrite(side==LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, 0);
     } else {
       // вращение вперед
-      analogWrite(side == LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, abs(value));
-      analogWrite(side == LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, 0);
+      analogWrite(side==LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, abs(value));
+      analogWrite(side==LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, 0);
     }
   } else {
     // вращение назад
-    analogWrite(side == LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, 0);
-    analogWrite(side == LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, abs(value));
+    analogWrite(side==LEFT ? LEFT_MOTOR_PIN_1 : RIGHT_MOTOR_PIN_1, 0);
+    analogWrite(side==LEFT ? LEFT_MOTOR_PIN_2 : RIGHT_MOTOR_PIN_2, abs(value));
   }
 }
 
-float getRotationDir(float value) {
-  if (value >= 0) {
-    if (value == 0) {
+float getRotationDir(float value){
+  if (value>=0) {
+    if (value==0){
       return 0.0;
     }
     else
@@ -248,20 +233,7 @@ inline float impulse2meters(float x) {
   return (x / WHEEL_IMPULSE_COUNT) * M_PI * WHEEL_DIAMETER;
 }
 
-float sumIprev(int side) {
-  float sum_i_prev = 0.0;
-  for (int i = 0; i < I_SIZE; i++)
-  {
-    sum_i_prev += I_prev[side][i];
-  }
-  return sum_i_prev;
-}
-
-float noRear(float value)
-{
-  if (value < 0)
-  {
-    return 0.0;
-  }
-  return abs(value / 2);
+// преобразование импульсов в радианы
+inline float impulse2rad(float x) {
+  return (x / WHEEL_IMPULSE_COUNT) * 2.0 * M_PI;
 }

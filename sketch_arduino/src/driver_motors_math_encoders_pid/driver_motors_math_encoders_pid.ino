@@ -13,11 +13,9 @@
 
 #define TIME_PUB_PERIOD_MS          100  // интервал публикации значений
 
-#define Kp                        630.0    // пропорциональный коэффициент для ПИД регулятора (41.7)
-#define Ki                        0.4      // интегральный коэффициент для ПИД регулятора
-#define Kd                        0.3      // дифференциальный коэффициент для ПИД регулятора
-#define I_SIZE                    15      // длинна выборки последних интегральных состовляющих   
-#define K_SPEED                   0.42      
+#define Kp                        120.0    // пропорциональный коэффициент для ПИД регулятора (41.7)
+#define Ki                        0.1      // интегральный коэффициент для ПИД регулятора
+#define Kd                        0.2      // дифференциальный коэффициент для ПИД регулятора
 
 #define MOTOR_VALUE_MAX           255      // максимальное значение подаваемое на драйвер
 #define MOTOR_VALUE_MIN           50       // минимальное значение подаваемое на драйвер
@@ -43,18 +41,18 @@
 #define ROTATE_RIGHT              4
 
 unsigned long last_time_switch; // время последней публикации
-unsigned long last_time_pub; // время последней публикации
-int mode = STOP;         // режим управления
+unsigned long last_time_pub;    // время последней публикации
+int mode = STOP;                // режим управления
 
 float linear = ROBOT_LINEAR;
 float angular = ROBOT_ANGULAR;
 
 float enc_count[COUNT_MOTORS] = {0.0, 0.0};      // счетчик для левого колеса
-float speed_wheel[COUNT_MOTORS] = {0.0, 0.0};    // скорость моторов
+float speed_wheel[COUNT_MOTORS] = {0.0, 0.0};    // скорость моторов требуемая
+float speed_actual[COUNT_MOTORS] = {0.0, 0.0};   // скорость моторов реальная
 
 float e_prev[COUNT_MOTORS] = {0.0, 0.0};          //последнее значение разницы скорости движения
-float I_prev[COUNT_MOTORS][I_SIZE];               //последние значения выборки интегральной составляющей ПИД регулятора
-int i_count = 0;
+float I_prev[COUNT_MOTORS] = {0.0, 0.0};          //последние значения выборки интегральной составляющей ПИД регулятора
 
 void setup() {
   // инициализация выходов на драйверы управления моторами
@@ -82,20 +80,20 @@ void loop(){
 
     float V = linear;                      //линейная скорость
     float W = angular;                     //угловая скорость
-    float r = WHEEL_DIAMETER/2.0;            //радиус колеса
-    float d = WHEEL_BASE;                  //база робота
+    float r = WHEEL_DIAMETER/2.0;          //радиус колеса
+    float L = WHEEL_BASE;                  //база робота
   
-    // вычисление требуемой скорости вращения колес
-    speed_wheel[LEFT] = r * ((1.0 / r) * V - (d / r) * W);
-    speed_wheel[RIGHT] = r * ((1.0 / r) * V + (d / r) * W);
+    // вычисление требуемой скорости вращения колес (рад/с)
+    speed_wheel[LEFT] = (1.0 / r) * V - (L / r) * W;
+    speed_wheel[RIGHT] = (1.0 / r) * V + (L / r) * W;
 
     //вычисление текущей скорости вращения колес
-    float speed_actual_left = impulse2meters(enc_count[LEFT]) / ((float)t / 1000.0);
-    float speed_actual_right = impulse2meters(enc_count[RIGHT]) / ((float)t / 1000.0);
+    speed_actual[LEFT] = impulse2rad(enc_count[LEFT]) / ((float)t / 1000.0);
+    speed_actual[RIGHT] = impulse2rad(enc_count[RIGHT]) / ((float)t / 1000.0);
 
     //вычисление значения для драйвера используя ПИД-регулятор
-    float pid_left = linear2driverMotor(speed_wheel[LEFT], speed_actual_left, LEFT);
-    float pid_right = linear2driverMotor(speed_wheel[RIGHT], speed_actual_right, RIGHT);
+    float pid_left = motorsPID(speed_wheel[LEFT], speed_actual[LEFT], LEFT);
+    float pid_right = motorsPID(speed_wheel[RIGHT], speed_actual[RIGHT], RIGHT);
 
     moveMotor(pid_left, LEFT);
     moveMotor(pid_right, RIGHT);
@@ -104,6 +102,11 @@ void loop(){
     Serial.print(enc_count[LEFT]);
     Serial.print(", R_count: ");
     Serial.println(enc_count[RIGHT]);
+
+    Serial.print("L_rad: ");
+    Serial.print(impulse2rad(enc_count[LEFT]));
+    Serial.print(", R_rad: ");
+    Serial.println(impulse2rad(enc_count[RIGHT]));
 
     Serial.print("L_meters: ");
     Serial.print(impulse2meters(enc_count[LEFT]));
@@ -116,9 +119,9 @@ void loop(){
     Serial.println(speed_wheel[RIGHT]);
 
     Serial.print("L_speed_actual: ");
-    Serial.print(speed_actual_left);
+    Serial.print(speed_actual[LEFT]);
     Serial.print(", R_speed_actual: ");
-    Serial.println(speed_actual_right);
+    Serial.println(speed_actual[RIGHT]);
 
     Serial.print("L_pid_value: ");
     Serial.print(pid_left);
@@ -134,57 +137,44 @@ void loop(){
   }
 }
 
-int linear2driverMotor(float linear_speed, float speed_actual, int side)
+// ПИД-регулятор
+int motorsPID(float speed_control, float speed_actual, int side)
 {
-  if (linear_speed == 0) {
-    I_prev[i_count][side] = 0.0;
+  // при управляющем воздействии равным нулю фиксируем составляющие на текущем шаге и возвращаем управляющее возжействие равным нулю
+  if (speed_control == 0.0) {
+    I_prev[side] = 0.0;
     e_prev[side] = 0.0;
     return 0;
   }
 
-  //Расчет средней скорости движения между публикациями
-  float e = -(speed_actual - (linear_speed / K_SPEED));          //разница в скорости текущая в m/s и желаемая m/s
+  // расчет ошибки между требуемой скоростью и фактической
+  float e = speed_control - speed_actual;          //разница в скорости текущая в m/s и желаемая m/s
 
-  //ПИД регулятор для рассчета значения для драйвера моторов
+  // ПИД регулятор для рассчета значения для драйвера моторов
   float P = Kp * e;
-  float I = sumIprev(side) * Ki;
+  float I = I_prev[side] + Ki * e;
   float D = Kd * (e - e_prev[side]);
-  float motor_value = round(P + I + D);
+  float value = round(P + I + D);
 
-  if (i_count == I_SIZE) {
-    i_count = 0;
-  }
+  I_prev[side] = I;            //фиксируем интегральную составляющую
+  e_prev[side] = e;            //фиксируем последнее значение разницы в скорости
 
-  I_prev[i_count][side] = I;                  //фиксируем интегральную составляющую
-  e_prev[side] = e;                     //фиксируем последнее значение разницы в скорости
-  i_count++;
-
-  if (motor_value < 0 && motor_value >= -MOTOR_VALUE_MIN) {
-    motor_value = -MOTOR_VALUE_MIN;
-  }
-  if (motor_value > 0 && motor_value <= MOTOR_VALUE_MIN) {
-    motor_value = MOTOR_VALUE_MIN;
-  }
-
-  //Убираем переполнение ШИМ
-  if (motor_value > MOTOR_VALUE_MAX) {
-    return MOTOR_VALUE_MAX;
-  }
-
-  if (motor_value < -MOTOR_VALUE_MAX) {
-    return -MOTOR_VALUE_MAX;
-  }
-
-  return motor_value;
+  return value;
 }
 
 // управление мотором на определенной стороне робота
 void moveMotor(int value, int side){
   // избавляемся от переполнения ШИМ
-  if (value>255)
-    value = 255;
-  if (value<-255)
-    value = -255;
+  if (value>MOTOR_VALUE_MAX)
+    value = MOTOR_VALUE_MAX;
+  if (value<-MOTOR_VALUE_MAX)
+    value = -MOTOR_VALUE_MAX;
+
+  // убираем значения ниже минимального значения при котором моторы могут вращаться
+  if (value < 0 && value >= -MOTOR_VALUE_MIN)
+    value = -MOTOR_VALUE_MIN;
+  if (value > 0 && value <= MOTOR_VALUE_MIN)
+    value = MOTOR_VALUE_MIN;
 
   // определяем направление вращения и передаем значения на драйвер
   if (value>=0) {
@@ -204,6 +194,7 @@ void moveMotor(int value, int side){
   }
 }
 
+// получаем направление вращения двигателя относительно значения скорости вращения
 float getRotationDir(float value){
   if (value>=0) {
     if (value==0){
@@ -235,6 +226,10 @@ inline float impulse2meters(float x) {
   return (x / WHEEL_IMPULSE_COUNT) * M_PI * WHEEL_DIAMETER;
 }
 
+// преобразование импульсов в радианы
+inline float impulse2rad(float x) {
+  return (x / WHEEL_IMPULSE_COUNT) * 2.0 * M_PI;
+}
 // изменение режима управления по заданному интервалу
 void switchMode(){
   // вычисление интервала времени от последней публикации
@@ -263,11 +258,11 @@ void go(int mode){
     linear = -ROBOT_LINEAR;
     break;
   case ROTATE_LEFT:
-    angular = 2.0;
+    angular = M_PI;
     linear = 0.0;
     break;
   case ROTATE_RIGHT:
-    angular = -2.0;
+    angular = -M_PI;
     linear = 0.0;
     break;
   case STOP:
@@ -275,13 +270,4 @@ void go(int mode){
     linear = 0.0;
     break;
   }
-}
-
-float sumIprev(int side) {
-  float sum_i_prev = 0.0;
-  for (int i = 0; i < I_SIZE; i++)
-  {
-    sum_i_prev += I_prev[side][i];
-  }
-  return sum_i_prev;
 }

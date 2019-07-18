@@ -2,7 +2,7 @@
 
 // выводы к которым подключены датчики линии
 #define SENSOR_ANALOG                  A0
-#define SENSOR_DIGITAL                 4
+#define SENSOR_DIGITAL                 11
 
 #define TIME_PUB_PERIOD_MS          200  // интервал публикации значений
 
