@@ -1,0 +1,3 @@
+<launch>
+    <node name="pub_motor_value_node" pkg="pub_motor_value" type="pub_motor_value_node" output="screen"/>
+</launch>

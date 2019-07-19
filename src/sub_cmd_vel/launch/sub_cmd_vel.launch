@@ -1,0 +1,3 @@
+<launch>
+    <node name="sub_cmd_vel_node" pkg="sub_cmd_vel" type="sub_cmd_vel_node" output="screen"/>
+</launch>

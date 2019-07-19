@@ -1,0 +1,5 @@
+<launch>
+    <node name="pub_motor_value_params_node" pkg="pub_motor_value" type="pub_motor_value_params_node" output="screen">
+        <param name="motor_value" value="0"/>
+    </node>
+</launch>
