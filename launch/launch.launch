@@ -1,0 +1,4 @@
+<launch>
+    <include file="$(find education_session)/launch/driver.launch" />
+    <include file="$(find control_allocation)/launch/control_allocation.launch" />
+</launch>
